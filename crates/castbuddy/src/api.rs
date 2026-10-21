@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use axum::extract::connect_info::ConnectInfo;
@@ -17,7 +18,7 @@ use crate::state::SharedState;
 /// stops a wedged upstream from pinning dashboard requests open forever.
 const API_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub fn router(state: SharedState, web_dist: String) -> Router {
+pub fn router(state: SharedState, web_dist: String, port: u16) -> Router {
     let api = Router::new()
         .route("/status", get(status))
         .route("/config", get(get_config))
@@ -60,6 +61,46 @@ pub fn router(state: SharedState, web_dist: String) -> Router {
     Router::new()
         .nest("/api/v1", api)
         .fallback_service(static_files)
+        // The API has no auth, so the loopback bind is its only boundary -
+        // and a loopback bind alone does not stop DNS rebinding (a website
+        // resolving its own name to 127.0.0.1 becomes same-origin with the
+        // dashboard). The Host check below closes that hole.
+        .layer(axum::middleware::from_fn(
+            move |request: axum::extract::Request, next: axum::middleware::Next| {
+                host_guard(port, request, next)
+            },
+        ))
+}
+
+/// Only accept requests addressed to this machine's loopback name. A
+/// rebinding website always carries the attacker's hostname in the Host
+/// header (the browser sends what the user typed), which is never allowed,
+/// so it can neither read nor mutate the API.
+async fn host_guard(
+    port: u16,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let host = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !host_allowed(host, port) {
+        tracing::warn!(target: "access", "host guard: rejected Host {host:?}");
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    next.run(request).await
+}
+
+/// True for the loopback names a local browser actually uses, on the
+/// dashboard port (with or without the port suffix).
+fn host_allowed(host: &str, port: u16) -> bool {
+    let host = host.trim().to_ascii_lowercase();
+    matches!(host.as_str(), "127.0.0.1" | "localhost" | "[::1]" | "::1")
+        || host == format!("127.0.0.1:{port}")
+        || host == format!("localhost:{port}")
+        || host == format!("[::1]:{port}")
 }
 
 /// Handlers here are all quick (local API + loopback MediaMTX); a ceiling
@@ -220,10 +261,35 @@ fn validate(input: &DestinationInput) -> Result<(), (StatusCode, String)> {
     if input.name.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "name is required".into()));
     }
+    validate_name(input.name.trim())?;
     if !input.url.starts_with("rtmp://") && !input.url.starts_with("rtmps://") {
         return Err((
             StatusCode::BAD_REQUEST,
             "url must start with rtmp:// or rtmps://".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// A live target becomes one segment of the HLS proxy's upstream URL, so it
+/// must stay a single path segment: no slashes, no `..`, never an all-dot
+/// name (`.` collapses to the media root when the URL is normalized).
+fn valid_live_target(target: &str) -> bool {
+    !target.is_empty()
+        && !target.contains("..")
+        && !target.trim_matches('.').is_empty()
+        && target
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-.~".contains(c))
+}
+
+/// Operator-supplied names end up in the access log; control characters
+/// could forge log lines, so they are rejected outright.
+fn validate_name(name: &str) -> Result<(), (StatusCode, String)> {
+    if name.chars().any(|c| c.is_control()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "name must not contain control characters".into(),
         ));
     }
     Ok(())
@@ -415,6 +481,16 @@ async fn preview_whep(
     Path(rest): Path<String>,
     body: String,
 ) -> Result<Response, (StatusCode, String)> {
+    // The path goes straight into an upstream URL: keep it to the charset
+    // MediaMTX path names use and never allow `..` segments.
+    if rest.is_empty()
+        || rest.contains("..")
+        || !rest
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-.~/".contains(c))
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid stream path".into()));
+    }
     let cfg = state.config.read().await;
     let webrtc_base = cfg.mediamtx.webrtc_url.trim_end_matches('/').to_string();
     let url = format!("{webrtc_base}/{rest}/whep");
@@ -547,6 +623,7 @@ async fn create_publish_key(
     if name.is_empty() || name.len() > 64 {
         return Err((StatusCode::BAD_REQUEST, "name must be 1-64 characters".into()));
     }
+    validate_name(name)?;
     let mut cfg = state.config.write().await;
     let base = slugify(name);
     let mut id = base.clone();
@@ -677,6 +754,7 @@ async fn create_share(
     if name.is_empty() || name.len() > 64 {
         return Err((StatusCode::BAD_REQUEST, "name must be 1-64 characters".into()));
     }
+    validate_name(name)?;
     let kind = input.kind.trim();
     if !matches!(kind, "live" | "file" | "folder") {
         return Err((
@@ -695,11 +773,7 @@ async fn create_share(
     let mut cfg = state.config.write().await;
     match kind {
         "live" => {
-            if target.is_empty()
-                || !target
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "_-./~".contains(c))
-            {
+            if !valid_live_target(&target) {
                 return Err((StatusCode::BAD_REQUEST, "invalid media path".into()));
             }
         }
@@ -902,24 +976,51 @@ struct PlayRequest {
     monitor: bool,
 }
 
+/// Resolve `requested` (absolute, or relative to the media root) inside
+/// `root`, refusing anything that escapes it. Symlinks are resolved first,
+/// so a link pointing outside the root is rejected too. None = reject.
+fn confine_to_media(root: &std::path::Path, requested: &str) -> Option<PathBuf> {
+    let canon_root = std::fs::canonicalize(root).ok()?;
+    // Normalize separators; strip leading slashes so root-relative input can
+    // never switch drives through PathBuf::join on Windows.
+    let rel = requested
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_string();
+    let candidate = if std::path::Path::new(requested).is_absolute() {
+        PathBuf::from(requested)
+    } else {
+        canon_root.join(&rel)
+    };
+    let canon = std::fs::canonicalize(candidate).ok()?;
+    (canon.starts_with(&canon_root) && canon.is_file()).then_some(canon)
+}
+
 async fn player_play(
     State(state): State<SharedState>,
     Json(req): Json<PlayRequest>,
 ) -> Result<Json<crate::player::PlayerStatus>, (StatusCode, String)> {
-    let (rtmp, ff, mpv) = player_cfg(&state).await;
-    // Relative paths (what the file browser produces) resolve against media_dir.
-    let file = {
-        let p = std::path::Path::new(&req.file);
-        if p.is_absolute() {
-            req.file.clone()
-        } else {
-            let media_dir = state.config.read().await.server.media_dir.clone();
-            std::path::PathBuf::from(media_dir)
-                .join(&req.file)
-                .to_string_lossy()
-                .into_owned()
-        }
+    // Playback is confined to media_dir: the file browser only produces
+    // relative paths, and the API must not trust its callers - an absolute
+    // path (or one escaping via `..`/symlink) could otherwise broadcast any
+    // file readable by this user.
+    let root = {
+        let cfg = state.config.read().await;
+        std::fs::canonicalize(&cfg.server.media_dir).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("media_dir {:?} not accessible: {e}", cfg.server.media_dir),
+            )
+        })?
     };
+    let file = confine_to_media(&root, &req.file)
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            "file not found under media_dir".to_string(),
+        ))?
+        .to_string_lossy()
+        .into_owned();
+    let (rtmp, ff, mpv) = player_cfg(&state).await;
     state
         .player
         .play(&file, req.monitor, &rtmp, &ff, &mpv)
@@ -994,4 +1095,70 @@ async fn player_monitor(
         .await
         .map(Json)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_guard_accepts_loopback_only() {
+        assert!(host_allowed("127.0.0.1:8080", 8080));
+        assert!(host_allowed("localhost:8080", 8080));
+        assert!(host_allowed("[::1]:8080", 8080));
+        assert!(host_allowed(" 127.0.0.1:8080 ", 8080));
+        // DNS rebinding: the browser keeps the attacker's hostname, which
+        // resolves to 127.0.0.1 but must never be accepted.
+        assert!(!host_allowed("evil.example:8080", 8080));
+        assert!(!host_allowed("127.0.0.1.nip.io:8080", 8080));
+        // Right name, wrong port; and no Host header at all.
+        assert!(!host_allowed("127.0.0.1:9999", 8080));
+        assert!(!host_allowed("", 8080));
+    }
+
+    #[test]
+    fn live_targets_stay_single_segments() {
+        // Real MediaMTX path names and the user's own configured ones.
+        assert!(valid_live_target("waff"));
+        assert!(valid_live_target("player"));
+        assert!(valid_live_target("some.stream-1~x"));
+        // Traversal / root-collapse attempts.
+        assert!(!valid_live_target(""));
+        assert!(!valid_live_target("."));
+        assert!(!valid_live_target(".."));
+        assert!(!valid_live_target("..."));
+        assert!(!valid_live_target("a/../b"));
+        assert!(!valid_live_target("a/b"));
+        assert!(!valid_live_target("a..b"));
+        assert!(!valid_live_target("bad name"));
+    }
+
+    #[test]
+    fn names_reject_control_chars() {
+        assert!(validate_name("party stream").is_ok());
+        // A newline here would let an operator-supplied name forge a line
+        // in the access log.
+        assert!(validate_name("bad\nINFO access: fake line").is_err());
+        assert!(validate_name("bell\u{7}").is_err());
+    }
+
+    #[test]
+    fn media_confine_rejects_escapes() {
+        let root = std::env::temp_dir();
+        assert!(confine_to_media(&root, "../whatever").is_none());
+        assert!(confine_to_media(&root, "C:\\Windows\\win.ini").is_none());
+        assert!(confine_to_media(&root, "").is_none());
+        assert!(confine_to_media(&root, "/").is_none());
+    }
+
+    #[test]
+    fn media_confine_accepts_files_inside() {
+        let root = std::env::temp_dir().canonicalize().unwrap();
+        let f = root.join(format!("castbuddy-test-{}.txt", std::process::id()));
+        std::fs::write(&f, "x").unwrap();
+        let rel = f.file_name().unwrap().to_str().unwrap().to_string();
+        let ok = confine_to_media(&root, &rel);
+        let _ = std::fs::remove_file(&f);
+        assert!(ok.is_some(), "a plain file inside the root must resolve");
+    }
 }

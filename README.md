@@ -97,7 +97,7 @@ Everything is optional; defaults work out of the box:
 
 ```toml
 [server]
-bind = "127.0.0.1"     # keep local; the API has no auth yet
+bind = "127.0.0.1"     # keep local; no auth on the API (Host pinned to loopback)
 port = 8080
 media_dir = "."        # file browser root for the built-in player
 # mpv = "mpv"          # mpv binary (player); e.g. "bin/mpv/mpv.exe"
@@ -243,6 +243,12 @@ The share listener rate-limits each IP to ~25 req/s (burst 60), generous for
 any player and fatal for floods; offenders get `429` and one warn line per
 five minutes.
 
+**Disclaimer:** if you serve this to the public internet, especially in the
+EU/EEA, GDPR is on you. The access log records viewer IP addresses, which are
+personal data, so you need a lawful basis, a retention limit, and a notice
+your visitors can actually see (for example on the watch page or your site's
+front page).
+
 ## HTTPS / reaching links outside your LAN
 
 Share links (`/watch/<key>`, `/d/<key>`) are the intended way to hand a stream
@@ -317,7 +323,14 @@ deploy/             docker-compose + mediamtx.yml (hardened reference for a futu
   hold 128 bits of CSPRNG entropy, so guessing one is not feasible. They can
   expire and be revoked instantly from the dashboard. The share listener is
   separate from the admin API; expose *it* (behind HTTPS), keep `bind` local.
-- The dashboard/API has no authentication; keep `bind = "127.0.0.1"`.
+  Client IPs are taken from the proxy-appended (last) `X-Forwarded-For` hop,
+  so a visitor cannot forge the address in the access log or dodge the
+  per-IP rate limit by spoofing headers.
+- The dashboard/API has no authentication; keep `bind = "127.0.0.1"`. As
+  defence in depth it rejects any request whose `Host` header is not a
+  loopback name - that blocks DNS-rebinding attacks from websites - and the
+  player only accepts files inside `server.media_dir` (absolute paths and
+  `..`/symlink escapes are refused after canonicalization).
 - File access through share links is confined to the share's target under
   `server.media_dir` (`..`, backslashes, drive letters and symlink escapes are
   rejected; paths are canonicalized before serving).

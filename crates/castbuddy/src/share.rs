@@ -163,7 +163,7 @@ async fn watch_page(
 <video id="v" controls autoplay playsinline muted></video>
 <div id="msg">Stream offline — retrying…</div>
 <span class="tag">{title} &middot; CastBuddy</span>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js" integrity="sha384-cciJ0zi8d1uMKC2zJd7jvPY4HQt7W4ByUI/FlMkltvBi31aW61rcpVBhpmW8/NwX" crossorigin="anonymous"></script>
 <script>
   (function () {{
     var video = document.getElementById("v");
@@ -262,6 +262,12 @@ async fn watch_proxy(
     };
     if share.kind != "live" {
         return deny(&state, &ip, &key).await;
+    }
+    // Defense in depth: live targets are validated at creation, but the
+    // config file is hand-editable - never let `..` or an all-dot name
+    // reach the upstream URL.
+    if share.target.contains("..") || share.target.trim_matches('.').is_empty() {
+        return not_found();
     }
     let upstream = format!(
         "{}/{}/{}",

@@ -20,12 +20,14 @@ use tokio::sync::Mutex;
 pub const SHARE_RATE_PER_SEC: f64 = 25.0;
 pub const SHARE_BURST: f64 = 60.0;
 
-/// Client IP: first `X-Forwarded-For` hop when a reverse proxy (Tailscale
-/// Serve, Caddy) fronts the listener, else the socket peer.
+/// Client IP: the last `X-Forwarded-For` hop when a reverse proxy (Tailscale
+/// Serve, Caddy) fronts the listener, else the socket peer. The LAST hop is
+/// the only trustworthy one: a proxy APPENDS the address it actually saw,
+/// while any earlier hops are supplied by the client and can be forged.
 pub fn client_ip(headers: &HeaderMap, remote: Option<SocketAddr>) -> String {
     if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        if let Some(first) = xff.split(',').next() {
-            let t = first.trim();
+        if let Some(last) = xff.rsplit(',').next() {
+            let t = last.trim();
             if !t.is_empty() && t.len() <= 64 {
                 return t.to_string();
             }
@@ -136,11 +138,17 @@ mod tests {
     }
 
     #[test]
-    fn xff_wins_over_socket() {
+    fn xff_last_hop_wins_over_socket_and_forged_hops() {
         let mut h = HeaderMap::new();
-        h.insert("x-forwarded-for", "203.0.113.9, 10.0.0.1".parse().unwrap());
+        // The client can prepend any address it likes; the proxy appends the
+        // real one last, and that hop must be the one we trust.
+        h.insert(
+            "x-forwarded-for",
+            "6.6.6.6, 198.51.100.7, 203.0.113.9".parse().unwrap(),
+        );
         let addr: SocketAddr = "127.0.0.1:5555".parse().unwrap();
         assert_eq!(client_ip(&h, Some(addr)), "203.0.113.9");
+        // No proxy header at all: socket peer, not a spoofable string.
         assert_eq!(client_ip(&HeaderMap::new(), Some(addr)), "127.0.0.1");
     }
 }

@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!("dashboard on http://{bind}");
 
-    let dashboard = api::router(state.clone(), cfg.server.web_dist.clone())
+    let dashboard = api::router(state.clone(), cfg.server.web_dist.clone(), cfg.server.port)
         .into_make_service_with_connect_info::<std::net::SocketAddr>();
 
     let dashboard_serve =
