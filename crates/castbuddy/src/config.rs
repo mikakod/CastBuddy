@@ -64,6 +64,19 @@ pub struct ServerConfig {
         deserialize_with = "deserialize_bool_ish"
     )]
     pub public_url_enabled: bool,
+    /// Write the access log: request lines with client IPs, share
+    /// allow/deny, stream start/end, MediaMTX console output. Set `false`
+    /// to record nothing about who connected (GDPR: no viewer IPs anywhere,
+    /// so no notice is needed on that account). Rate limiting and every
+    /// access rule stay fully active either way - only the records are
+    /// gone. Accepts `true`/`false` and `yes`/`no`; applied at startup.
+    #[serde(
+        default = "default_true",
+        rename = "enable-logging",
+        alias = "enable_logging",
+        deserialize_with = "deserialize_bool_ish"
+    )]
+    pub enable_logging: bool,
 }
 
 /// Booleans as `true`/`false` (TOML) or `yes`/`no`/`on`/`off` (strings) -
@@ -378,6 +391,7 @@ impl Default for ServerConfig {
             public_port: default_public_port(),
             public_url: String::new(),
             public_url_enabled: false,
+            enable_logging: true,
         }
     }
 }
@@ -664,4 +678,24 @@ fn auth_entry_yml(e: &serde_json::Value) -> String {
         }
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enable_logging_defaults_on_and_honors_false() {
+        // Opt-out, not opt-in: an absent key must keep logging enabled.
+        assert!(ServerConfig::default().enable_logging);
+
+        let cfg: Config = toml::from_str("[server]\nenable-logging = false").unwrap();
+        assert!(!cfg.server.enable_logging);
+
+        // The snake_case alias and yes/no strings work like public-url-enabled.
+        let cfg: Config = toml::from_str("[server]\nenable_logging = \"no\"").unwrap();
+        assert!(!cfg.server.enable_logging);
+        let cfg: Config = toml::from_str("[server]\nenable-logging = \"yes\"").unwrap();
+        assert!(cfg.server.enable_logging);
+    }
 }

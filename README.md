@@ -117,6 +117,10 @@ media_dir = "."        # file browser root for the built-in player
 # https:// when a TLS reverse proxy (Caddy, Tailscale) fronts it:
 # public-url-enabled = true     # or yes/no
 # public-url = "https://stream.example.com"
+# Write the access log (viewer IPs, allow/deny, stream start/end, MediaMTX
+# console lines). Set false to record nothing about who visited - e.g. for
+# GDPR; rate limiting and all access rules stay active either way.
+# enable-logging = true         # default; or yes/no
 
 [mediamtx]
 mode = "managed"       # "managed" = daemon spawns mediamtx; "external" = Docker/already-running
@@ -246,11 +250,22 @@ The share listener rate-limits each IP to ~25 req/s (burst 60), generous for
 any player and fatal for floods; offenders get `429` and one warn line per
 five minutes.
 
+### Turning the access log off (GDPR)
+
+`enable-logging = false` under `[server]` (default `true`) silences the
+whole `access` target **and** MediaMTX's console passthrough - the only two
+places a visitor's IP can end up in a record. Nothing about *who* connected
+is written anywhere (stdout or file). Enforcement is unchanged: rate
+limiting, key checks and every other access rule stay fully active, only
+the records are gone. Lifecycle lines (target `castbuddy`) keep flowing, so
+the daemon stays troubleshootable. Takes effect on restart.
+
 **Disclaimer:** if you serve this to the public internet, especially in the
 EU/EEA, GDPR is on you. The access log records viewer IP addresses, which are
 personal data, so you need a lawful basis, a retention limit, and a notice
 your visitors can actually see (for example on the watch page or your site's
-front page).
+front page). Alternatively, set `enable-logging = false`: then no visitor
+addresses are recorded at all, and no notice is required on that account.
 
 ## HTTPS / reaching links outside your LAN
 

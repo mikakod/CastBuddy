@@ -16,15 +16,17 @@ use crate::state::SharedState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // The guard must outlive the subscriber or the file writer dies silently.
-    let _log_guard = init_logging();
-
     let config_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("castbuddy.toml"));
 
     let cfg = Config::load_or_create(&config_path)?;
+
+    // The guard must outlive the subscriber or the file writer dies silently.
+    // The access-logging preference is baked into the filter at startup.
+    let _log_guard = init_logging(cfg.server.enable_logging);
+
     let state = state::AppState::new(cfg.clone(), config_path);
 
     if cfg.mediamtx.mode == MediaMtxMode::Managed {
@@ -84,21 +86,42 @@ async fn main() -> anyhow::Result<()> {
 
 /// Stdout + a daily-rolling file under `logs/`, so troubleshooting survives
 /// a closed terminal and rotation keeps the directory bounded over time.
-fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
+///
+/// `enable_access_logging = false` silences the `access` target and
+/// MediaMTX's console passthrough - the only two places a visitor's IP can
+/// end up in a record (GDPR: record nothing instead of serving a notice).
+/// Lifecycle logs keep flowing, and enforcement (rate limits, key checks)
+/// is unaffected: it never depended on logging.
+fn init_logging(enable_access_logging: bool) -> tracing_appender::non_blocking::WorkerGuard {
     use tracing_subscriber::fmt::writer::MakeWriterExt;
 
     let file = tracing_appender::rolling::daily("logs", "castbuddy.log");
     let (file, file_guard) = tracing_appender::non_blocking(file);
+    let filter = match tracing_subscriber::EnvFilter::try_from_default_env() {
+        Ok(f) => f,
+        Err(_) => format!(
+            "castbuddy=info,info{}",
+            access_logging_directives(enable_access_logging)
+        )
+        .into(),
+    };
     // Plain text in the log file: greppable with Select-String / grep.
     tracing_subscriber::fmt()
         .with_ansi(false)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "castbuddy=info,info".into()),
-        )
+        .with_env_filter(filter)
         .with_writer(std::io::stdout.and(file))
         .init();
     file_guard
+}
+
+/// EnvFilter add-ons when the operator turned access logging off. Empty
+/// keeps the default filter untouched.
+fn access_logging_directives(enabled: bool) -> &'static str {
+    if enabled {
+        ""
+    } else {
+        ",access=off,mediamtx=off"
+    }
 }
 
 /// Loud log line if the managed MediaMTX child dies on its own (the status
@@ -144,4 +167,20 @@ async fn shutdown_signal(listener: &'static str) {
         .await
         .expect("failed to install Ctrl+C handler");
     tracing::info!("shutdown signal received ({listener})");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn access_logging_directives_build_valid_filters() {
+        let on = format!("castbuddy=info,info{}", access_logging_directives(true));
+        let off = format!("castbuddy=info,info{}", access_logging_directives(false));
+        assert!(tracing_subscriber::EnvFilter::try_new(&on).is_ok());
+        assert!(tracing_subscriber::EnvFilter::try_new(&off).is_ok());
+        // Enabled adds nothing to the default filter at all.
+        assert!(access_logging_directives(true).is_empty());
+        assert!(!access_logging_directives(false).is_empty());
+    }
 }
