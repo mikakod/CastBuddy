@@ -1,10 +1,13 @@
 # CastBuddy
 
-A private stream server you run yourself. Publish to it any way you like
-(OBS, VLC, a file straight from the dashboard), then hand friends a **secret
-link** to watch, or share files from a private media library. No accounts, no
-public exposure unless you choose it. Restreaming to YouTube/Twitch is built
-in too, but it's a bonus, not the point.
+A private stream server you run yourself. Broadcast to it any way you like
+(OBS, VLC, a file straight from the dashboard), then hand friends a **hidden
+link** to watch, or download streams/files.    
+No accounts, no public exposure unless you choose it.    
+Can be run fully locally, or with the file/stream-sharing server public facing.   
+Could also(with some work) be redesigned as a livestreaming/streaming service.   
+Restreaming to YouTube/Twitch or another custom RTMPS server is also possible.   
+
 
 ```
 Sources                        CastBuddy                        Outputs
