@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && case "$TARGETARCH" in \
            amd64) MTX=amd64 ;; \
-           arm64) MTX=arm64 ;; \
+           arm64) MTX=arm64v8 ;; \
            *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
        esac \
     && curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_${MTX}.tar.gz" \
