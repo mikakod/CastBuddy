@@ -103,10 +103,23 @@ async fn deny(state: &SharedState, ip: &str, key: &str) -> Response {
     not_found()
 }
 
+/// The public root says what this server actually is and records what the
+/// access log actually does - honest transparency instead of a fake
+/// compliance banner. Matches the implementation exactly: no cookies, no
+/// tracking, IP recording is the only personal data and can be disabled
+/// (`enable-logging = false`).
 async fn index() -> &'static str {
-    "To give you the best experience on this app, we collect some basic \
-     information in line with GDPR regulations. We use this to secure your \
-     account and improve our features. We never sell your personal data.\n"
+    "CastBuddy share server\n\
+     \n\
+     Shares are private links issued by the server owner:\n\
+     /watch/<key> streams, /d/<key> delivers files. Without a valid link\n\
+     there is nothing to see here.\n\
+     \n\
+     Privacy: opening a share link records your IP address in this\n\
+     server's access log, used only for rate limiting and abuse handling.\n\
+     No cookies, no tracking, no third-party content; nothing is sold or\n\
+     shared. The server owner can disable IP recording entirely, in which\n\
+     case no personal data is retained at all.\n"
 }
 
 fn find_share(cfg: &Config, key: &str) -> Option<Share> {
@@ -428,6 +441,11 @@ async fn listing_response(key: &str, rel: &str, dir: &Path, title: &str) -> Resp
     let mut items: Vec<(String, bool, u64)> = Vec::new();
     while let Ok(Some(entry)) = rd.next_entry().await {
         let name = entry.file_name().to_string_lossy().to_string();
+        // Same rule as the dashboard's file browser: hidden files (.DS_Store
+        // and friends) are not part of the share's presentation.
+        if name.starts_with('.') {
+            continue;
+        }
         let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
         let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
         items.push((name, is_dir, size));
