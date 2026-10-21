@@ -1,0 +1,4 @@
+# Shell scripts and the Dockerfile run inside Linux containers; a Windows
+# CRLF checkout breaks them (#!/bin/sh^M: bad interpreter). Keep them LF.
+*.sh text eol=lf
+Dockerfile text eol=lf
