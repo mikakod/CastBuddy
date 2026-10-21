@@ -49,8 +49,8 @@ pub struct ServerConfig {
     pub public_port: u16,
     /// Rewrite share links shown in the dashboard with this base URL instead
     /// of the hostname you browse the dashboard from. For reverse-proxy
-    /// setups (Caddy, Tailscale Serve): "puppers.ddns.net",
-    /// "https://puppers.ddns.net", "https://example.com:8443", ...
+    /// setups (Caddy, Tailscale Serve): "example.com",
+    /// "https://example.com", "https://example.com:8443", ...
     /// Scheme defaults to http:// when omitted.
     #[serde(default, rename = "public-url", alias = "public_url")]
     pub public_url: String,
@@ -401,8 +401,8 @@ impl Default for ServerConfig {
 
 impl ServerConfig {
     /// Resolved base URL for share links generated in the dashboard, e.g.
-    /// `http://puppers.ddns.net` when `public-url-enabled = true` and
-    /// `public-url = "puppers.ddns.net"`. Returns `None` when the override
+    /// `http://example.com` when `public-url-enabled = true` and
+    /// `public-url = "example.com"`. Returns `None` when the override
     /// is off or empty - callers then fall back to the dashboard's own
     /// hostname plus `public_port` (previous behavior).
     ///
