@@ -33,7 +33,9 @@ ARG MEDIAMTX_VERSION=v1.11.3
 # MediaMTX (managed child), ffmpeg (fan-out/player relay), mpv (headless
 # encode player) - matching what the native install expects on PATH.
 # The MediaMTX release asset is checksum-pinned (SHA-256 from the release's
-# published .sha256sum files), so a swapped archive fails the build.
+# published .sha256sum files), so a swapped archive fails the build. Its
+# MIT license text ships with the image at /usr/share/doc/mediamtx/LICENSE
+# (ffmpeg/mpv carry theirs via the Debian packages).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl ffmpeg mpv \
     && rm -rf /var/lib/apt/lists/* \
@@ -46,6 +48,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_${MTX}.tar.gz" \
     && echo "$SHA  /tmp/mediamtx.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/mediamtx.tar.gz -C /usr/local/bin mediamtx \
+    && mkdir -p /usr/share/doc/mediamtx \
+    && tar -xzf /tmp/mediamtx.tar.gz -C /usr/share/doc/mediamtx LICENSE \
     && rm /tmp/mediamtx.tar.gz
 
 # Non-root user; /data holds config, logs and the generated MediaMTX
