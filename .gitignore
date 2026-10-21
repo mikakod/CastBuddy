@@ -20,3 +20,6 @@ bin/
 daemon.err
 
 logs/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
