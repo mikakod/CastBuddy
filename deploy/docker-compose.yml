@@ -20,6 +20,9 @@ services:
     ports:
       - "49989:49989"           # share server - the ONLY public listener
       - "127.0.0.1:8080:8080"   # dashboard: host-loopback only (optional)
+      # OBS on the host/LAN (set rtmp_bind = "0.0.0.0" in the container
+      # config first - cleartext, trusted networks only):
+      # - "1935:1935"
     # Intentionally NOT published:
     #   1935/1936 RTMP(S) ingest, 8888 HLS, 8889 WebRTC, 9997 API,
     #   UDP 8189 (WebRTC ICE) - all bound to loopback inside the container.

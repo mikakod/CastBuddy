@@ -76,6 +76,12 @@ Notes:
 
 - Only the share port is published; the dashboard is pinned to
   host-loopback. MediaMTX's ports stay loopback *inside* the container.
+- **Publishing with OBS**: ingest is loopback-inside the container by
+  default (safest). To stream from the host or LAN, set
+  `rtmp_bind = "0.0.0.0"` in `deploy/data/castbuddy.toml` and uncomment
+  the `1935:1935` port line in the compose file - cleartext RTMP, fine
+  on a trusted LAN (the same trade-off as the native loopback/LAN
+  setup). Beyond a trusted network use RTMPS + `1936/tcp` (below).
 - Linux hosts: if the container cannot write `deploy/data/`, run
   `chown -R 1000:1000 deploy/data` (the image runs as uid 1000).
 - The WebRTC dashboard preview needs UDP 8189 end-to-end, which bridged
