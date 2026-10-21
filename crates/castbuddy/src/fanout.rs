@@ -186,7 +186,7 @@ async fn tick_once(state: &SharedState) -> anyhow::Result<()> {
             }
             // Stopped/backoff: start when there is something to pull.
             (false, Some(path)) => {
-                let due = st.retry_at.map_or(true, |t| Instant::now() >= t);
+                let due = st.retry_at.is_none_or(|t| Instant::now() >= t);
                 if due {
                     spawn(st, dest, &rtmp_base, &path, &ffmpeg_bin).await;
                 }

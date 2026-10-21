@@ -4,6 +4,7 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Config {
     #[serde(default)]
     pub server: ServerConfig,
@@ -463,18 +464,6 @@ impl Default for MediaMtxConfig {
             hls_bind: default_loopback(),
             webrtc_bind: default_loopback(),
             public_host: String::new(),
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            mediamtx: MediaMtxConfig::default(),
-            destinations: Vec::new(),
-            publish_keys: Vec::new(),
-            shares: Vec::new(),
         }
     }
 }

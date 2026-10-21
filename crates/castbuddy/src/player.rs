@@ -622,7 +622,7 @@ fn pace(epoch: &mut Option<i64>, ts: i64) -> Duration {
         }
         Some(ep) => {
             let delay = (ep + ts) - now;
-            if delay > REBASE_AHEAD_MS || delay < REBASE_BEHIND_MS {
+            if !(REBASE_BEHIND_MS..=REBASE_AHEAD_MS).contains(&delay) {
                 *epoch = Some(now - ts);
                 Duration::ZERO
             } else if delay > 0 {

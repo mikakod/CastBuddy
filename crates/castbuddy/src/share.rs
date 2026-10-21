@@ -450,7 +450,7 @@ async fn listing_response(key: &str, rel: &str, dir: &Path, title: &str) -> Resp
         let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
         items.push((name, is_dir, size));
     }
-    items.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    items.sort_by_key(|a| a.0.to_lowercase());
 
     let mut rows = String::new();
     if !rel.is_empty() {

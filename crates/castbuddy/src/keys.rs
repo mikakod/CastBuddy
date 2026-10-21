@@ -18,7 +18,7 @@ pub fn secret(n_bytes: usize) -> String {
 }
 
 fn encode_base32(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity((bytes.len() * 8 + 4) / 5);
+    let mut out = String::with_capacity((bytes.len() * 8).div_ceil(5));
     let mut acc: u64 = 0;
     let mut bits: u32 = 0;
     for &b in bytes {
