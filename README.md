@@ -396,9 +396,12 @@ Dockerfile          multi-arch image build (linux/amd64 + linux/arm64)
   hold 128 bits of CSPRNG entropy, so guessing one is not feasible. They can
   expire and be revoked instantly from the dashboard. The share listener is
   separate from the admin API; expose *it* (behind HTTPS), keep `bind` local.
-  Client IPs are taken from the proxy-appended (last) `X-Forwarded-For` hop,
-  so a visitor cannot forge the address in the access log or dodge the
-  per-IP rate limit by spoofing headers.
+  Client IPs come from the socket peer; the proxy-appended (last)
+  `X-Forwarded-For` hop is honored only when the proxy connects from
+  loopback (Caddy / Tailscale Serve on this machine), so a visitor cannot
+  forge the address in the access log or dodge the per-IP rate limit by
+  spoofing headers - on a directly-exposed listener the real socket
+  address is always used.
 - The dashboard/API has no authentication; keep `bind = "127.0.0.1"`. As
   defence in depth it rejects any request whose `Host` header is not a
   loopback name - that blocks DNS-rebinding attacks from websites - and the

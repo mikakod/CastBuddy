@@ -49,8 +49,8 @@ pub struct ServerConfig {
     pub public_port: u16,
     /// Rewrite share links shown in the dashboard with this base URL instead
     /// of the hostname you browse the dashboard from. For reverse-proxy
-    /// setups (Caddy, Tailscale Serve): "example.com",
-    /// "https://example.com", "https://example.com:8443", ...
+    /// setups (Caddy, Tailscale Serve): "puppers.ddns.net",
+    /// "https://puppers.ddns.net", "https://example.com:8443", ...
     /// Scheme defaults to http:// when omitted.
     #[serde(default, rename = "public-url", alias = "public_url")]
     pub public_url: String,
@@ -166,8 +166,11 @@ pub struct MediaMtxConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaMtxMode {
-    #[default]
     External,
+    /// The default: the daemon spawns and supervises MediaMTX itself, so a
+    /// fresh `castbuddy.toml` (quick start: `cargo run`) streams out of the
+    /// box. External mode is an explicit opt-in (Docker / pre-running MTX).
+    #[default]
     Managed,
 }
 
@@ -398,8 +401,8 @@ impl Default for ServerConfig {
 
 impl ServerConfig {
     /// Resolved base URL for share links generated in the dashboard, e.g.
-    /// `http://example.com` when `public-url-enabled = true` and
-    /// `public-url = "example.com"`. Returns `None` when the override
+    /// `http://puppers.ddns.net` when `public-url-enabled = true` and
+    /// `public-url = "puppers.ddns.net"`. Returns `None` when the override
     /// is off or empty - callers then fall back to the dashboard's own
     /// hostname plus `public_port` (previous behavior).
     ///
@@ -442,7 +445,7 @@ impl ServerConfig {
 impl Default for MediaMtxConfig {
     fn default() -> Self {
         Self {
-            mode: MediaMtxMode::External,
+            mode: MediaMtxMode::default(),
             api_url: default_api_url(),
             rtmp_url: default_rtmp_url(),
             webrtc_url: default_webrtc_url(),
@@ -478,7 +481,12 @@ impl Default for Config {
 /// yes/no/on/off values to quoted strings before parsing (the field's
 /// `deserialize_bool_ish` accepts them); leaves everything else untouched.
 fn expand_bare_bools(text: &str) -> String {
-    const KEYS: [&str; 2] = ["public-url-enabled", "public_url_enabled"];
+    const KEYS: [&str; 4] = [
+        "public-url-enabled",
+        "public_url_enabled",
+        "enable-logging",
+        "enable_logging",
+    ];
     text.lines()
         .map(|line| {
             let trimmed = line.trim_start();
@@ -697,5 +705,31 @@ mod tests {
         assert!(!cfg.server.enable_logging);
         let cfg: Config = toml::from_str("[server]\nenable-logging = \"yes\"").unwrap();
         assert!(cfg.server.enable_logging);
+
+        // Bare TOML-invalid yes/no are rewritten before parsing, like
+        // public-url-enabled: the README documents "or yes/no".
+        let cfg: Config =
+            toml::from_str(&expand_bare_bools("[server]\nenable-logging = no\n")).unwrap();
+        assert!(!cfg.server.enable_logging);
+        let cfg: Config =
+            toml::from_str(&expand_bare_bools("[server]\nenable_logging = yes # comment\n"))
+                .unwrap();
+        assert!(cfg.server.enable_logging);
+        // Unrelated keys are left strictly alone.
+        let cfg: Config = toml::from_str(&expand_bare_bools("[server]\nport = 8081\n")).unwrap();
+        assert_eq!(cfg.server.port, 8081);
+    }
+
+    #[test]
+    fn fresh_defaults_stream_out_of_the_box() {
+        // The README quick start is `cargo run` + point OBS at localhost:1935;
+        // that only works if a first-run config defaults to managed mode
+        // (the daemon spawns MediaMTX itself).
+        assert_eq!(MediaMtxConfig::default().mode, MediaMtxMode::Managed);
+        let cfg: Config = toml::from_str("[server]\nport = 8081").unwrap();
+        assert_eq!(cfg.mediamtx.mode, MediaMtxMode::Managed);
+        // Explicit external stays external (Docker / pre-running MediaMTX).
+        let cfg: Config = toml::from_str("[mediamtx]\nmode = \"external\"").unwrap();
+        assert_eq!(cfg.mediamtx.mode, MediaMtxMode::External);
     }
 }

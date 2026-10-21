@@ -24,18 +24,29 @@ pub const SHARE_BURST: f64 = 60.0;
 /// Serve, Caddy) fronts the listener, else the socket peer. The LAST hop is
 /// the only trustworthy one: a proxy APPENDS the address it actually saw,
 /// while any earlier hops are supplied by the client and can be forged.
+///
+/// The header is only honored when the socket peer is loopback - i.e. a
+/// proxy running on this machine, the topology the docs recommend. On a
+/// directly-exposed listener the header is entirely client-supplied, so
+/// trusting it there would let an abuser rotate fake IPs to bypass the
+/// per-IP rate limit and forge addresses in the access log; the real
+/// socket peer is used instead.
 pub fn client_ip(headers: &HeaderMap, remote: Option<SocketAddr>) -> String {
-    if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        if let Some(last) = xff.rsplit(',').next() {
-            let t = last.trim();
-            if !t.is_empty() && t.len() <= 64 {
-                return t.to_string();
+    let from_socket = remote
+        .map(|a| a.ip().to_string())
+        .unwrap_or_else(|| "unknown".into());
+    let peer_is_local = remote.is_some_and(|a| a.ip().is_loopback());
+    if peer_is_local {
+        if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+            if let Some(last) = xff.rsplit(',').next() {
+                let t = last.trim();
+                if !t.is_empty() && t.len() <= 64 {
+                    return t.to_string();
+                }
             }
         }
     }
-    remote
-        .map(|a| a.ip().to_string())
-        .unwrap_or_else(|| "unknown".into())
+    from_socket
 }
 
 /// Dedup helper: "log the first event per key, suppress repeats for a while".
@@ -150,5 +161,20 @@ mod tests {
         assert_eq!(client_ip(&h, Some(addr)), "203.0.113.9");
         // No proxy header at all: socket peer, not a spoofable string.
         assert_eq!(client_ip(&HeaderMap::new(), Some(addr)), "127.0.0.1");
+    }
+
+    #[test]
+    fn xff_is_ignored_from_non_loopback_peers() {
+        // Directly-exposed listener: the header is client-supplied, so it
+        // must NOT override the socket peer - otherwise a flooders' rotating
+        // fake IPs dodge the per-IP rate limit and forge the access log.
+        let mut h = HeaderMap::new();
+        h.insert("x-forwarded-for", "9.9.9.9".parse().unwrap());
+        let remote: SocketAddr = "203.0.113.50:40000".parse().unwrap();
+        assert_eq!(client_ip(&h, Some(remote)), "203.0.113.50");
+        // A LAN-hosted proxy is not trusted either: on a LAN-exposed
+        // listener every device could forge it.
+        let lan: SocketAddr = "192.168.1.5:40000".parse().unwrap();
+        assert_eq!(client_ip(&h, Some(lan)), "192.168.1.5");
     }
 }

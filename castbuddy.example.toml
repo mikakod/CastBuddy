@@ -8,9 +8,15 @@ destinations = []
 bind = "127.0.0.1"
 port = 8080
 web_dist = "web/dist"
-ffmpeg = "ffmpeg"
-mpv = "bin/mpv/mpv.exe"
-media_dir = "C:/Media/CastBuddy"
+# ffmpeg / mpv are looked up on PATH by default; point at local binaries
+# only when they are not installed:
+# ffmpeg = "ffmpeg"
+# mpv = "mpv"
+# Windows with binaries next to the project:
+# ffmpeg = "bin/ffmpeg.exe"
+# mpv = "bin/mpv/mpv.exe"
+media_dir = "."
+# Windows example: media_dir = "C:/Media/CastBuddy"
 public_bind = "127.0.0.1"
 public_port = 49989
 # Rewrite the share links the dashboard shows with a fixed public base URL
@@ -18,6 +24,9 @@ public_port = 49989
 # to http:// if omitted - include https:// behind TLS:
 # public-url-enabled = true      # or yes/no
 # public-url = "https://example.com"
+# Write the access log (viewer IPs, allow/deny, stream start/end). Default
+# true; false records nothing about who visited (GDPR):
+# enable-logging = true          # or yes/no
 
 [mediamtx]
 mode = "managed"
@@ -25,7 +34,9 @@ api_url = "http://127.0.0.1:9997"
 rtmp_url = "rtmp://127.0.0.1:1935"
 webrtc_url = "http://127.0.0.1:8889"
 hls_url = "http://127.0.0.1:8888"
-binary = "bin/mediamtx.exe"
+# MediaMTX binary for managed mode, looked up on PATH by default:
+# binary = "mediamtx"
+# Windows with the binary next to the project: binary = "bin/mediamtx.exe"
 config_path = "mediamtx.generated.yml"
 # RTMPS - guest publishers connect over rtmps://:1936. Point at any PEM cert +
 # key; a Let's Encrypt fullchain that a reverse proxy (Caddy) obtained and

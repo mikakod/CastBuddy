@@ -41,3 +41,10 @@ services:
     cap_drop:
       - ALL
     mem_limit: 2g
+    # Bounded container logs: the daemon also writes its own rolling file to
+    # /data/logs, but docker's json-file driver would otherwise grow forever.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
