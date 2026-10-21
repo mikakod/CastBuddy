@@ -413,6 +413,25 @@ Dockerfile          multi-arch image build (linux/amd64 + linux/arm64)
 - Stream keys are stored in plaintext `castbuddy.toml`; keep the file private.
   The generated `mediamtx.generated.yml` contains only their SHA-256 hashes.
 
+## Credits
+
+CastBuddy wouldn't exist without these projects - thank you!
+
+- [MediaMTX](https://github.com/bluenviron/mediamtx) - the RTMP/HLS/WebRTC
+  streaming server CastBuddy manages; every publish and playback flows
+  through it.
+- [FFmpeg](https://github.com/FFmpeg/FFmpeg) - fan-out relays to external
+  destinations and the built-in player's encoding pipeline.
+- [mpv](https://github.com/mpv-player/mpv) - headless file playback for the
+  built-in player.
+- [hls.js](https://github.com/video-dev/hls.js) - HLS playback in browsers
+  on the watch pages (pinned with an integrity hash).
+- [Axum](https://github.com/tokio-rs/axum) and
+  [Tokio](https://github.com/tokio-rs/tokio) - HTTP layer and async runtime
+  behind the dashboard and share servers.
+- [React](https://github.com/facebook/react) and
+  [Vite](https://github.com/vitejs/vite) - the dashboard's frontend.
+
 ## License
 
 MIT
