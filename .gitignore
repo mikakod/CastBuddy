@@ -1,0 +1,22 @@
+# Rust
+/target
+
+# Node
+node_modules/
+web/dist/
+
+# CastBuddy runtime state
+castbuddy.toml
+mediamtx.generated.yml
+*.log
+
+# bundled binaries
+bin/
+
+# Editors
+.vscode/
+.idea/
+
+daemon.err
+
+logs/

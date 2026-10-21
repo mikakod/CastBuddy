@@ -1,0 +1,35 @@
+# CastBuddy - hardened deployment topology.
+#
+# Only the share server may be reachable from outside. Everything else
+# (dashboard :8080, MediaMTX RTMP/HLS/WebRTC/API, the player) stays on
+# loopback inside the container. In managed mode MediaMTX runs as a child
+# process of castbuddy, so it needs no published ports of its own.
+#
+# NOTE: the castbuddy container image is on the roadmap (self-hosted is the
+# primary target). Until the Dockerfile exists, run the native binary in
+# managed mode - the exposure posture is identical because the daemon and
+# its generated MediaMTX config bind loopback themselves.
+services:
+  castbuddy:
+    image: castbuddy:local
+    # build: .   # Dockerfile: daemon + web/dist + ffmpeg/mediamtx binaries
+    restart: unless-stopped
+    ports:
+      - "49989:49989"           # share server - the ONLY public listener
+      - "127.0.0.1:8080:8080"   # dashboard: host-loopback only (optional)
+    # Intentionally NOT published:
+    #   1935/1936 RTMP(S) ingest, 8888 HLS, 8889 WebRTC, 9997 API,
+    #   UDP 8189 (WebRTC ICE) - all bound to loopback inside the container.
+    volumes:
+      - ./data/castbuddy.toml:/app/castbuddy.toml  # writable: shares/keys persist here
+      - ./data/media:/media                        # server.media_dir
+    environment:
+      - RUST_LOG=info
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g

@@ -1,0 +1,49 @@
+# LEGACY / external-mode reference - in the default "managed" setup CastBuddy
+# generates its own config (mediamtx.generated.yml) and this file is unused.
+# Kept locked-down to match the managed posture so copying it can't reintroduce
+# the Phase-0 holes: unused protocols off, no wildcard publishing, no
+# unauthenticated read, API on loopback, no ports published in compose.
+logLevel: info
+
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# MediaMTX enables RTSP and SRT by default - explicitly off.
+rtsp: no
+rtsps: no
+srt: no
+rist: no
+playback: no
+
+# Container-internal binds; docker-compose publishes no ports for this service.
+rtmp: yes
+rtmpAddress: :1935
+hls: yes
+hlsAddress: :8888
+webrtc: yes
+webrtcAddress: :8889
+
+authInternalUsers:
+  # Loopback only (= the castbuddy container on the compose network):
+  # publish to ingest/player, read, API.
+  - user: any
+    pass:
+    ips: ["127.0.0.1"]
+    permissions:
+      - action: publish
+        path: "ingest"
+      - action: publish
+        path: "player"
+      - action: read
+      - action: playback
+      - action: api
+  # Everyone else, any address: nothing. Streams are watched through the
+  # castbuddy share server, which proxies loopback HLS - never expose :8888.
+  - user: any
+    pass:
+    ips: []
+    permissions: []
+
+paths:
+  all_others:
+    source: publisher

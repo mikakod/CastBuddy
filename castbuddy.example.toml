@@ -1,0 +1,67 @@
+# CastBuddy configuration - sanitized EXAMPLE file.
+# Copy to `castbuddy.toml` next to the binary and adjust; the real
+# `castbuddy.toml` is gitignored (it contains stream keys and share IDs).
+
+destinations = []
+
+[server]
+bind = "127.0.0.1"
+port = 8080
+web_dist = "web/dist"
+ffmpeg = "ffmpeg"
+mpv = "bin/mpv/mpv.exe"
+media_dir = "C:/Media/CastBuddy"
+public_bind = "127.0.0.1"
+public_port = 49989
+# Rewrite the share links the dashboard shows with a fixed public base URL
+# (Caddy / Tailscale Serve in front of the share listener). Scheme defaults
+# to http:// if omitted - include https:// behind TLS:
+# public-url-enabled = true      # or yes/no
+# public-url = "https://example.com"
+
+[mediamtx]
+mode = "managed"
+api_url = "http://127.0.0.1:9997"
+rtmp_url = "rtmp://127.0.0.1:1935"
+webrtc_url = "http://127.0.0.1:8889"
+hls_url = "http://127.0.0.1:8888"
+binary = "bin/mediamtx.exe"
+config_path = "mediamtx.generated.yml"
+# RTMPS - guest publishers connect over rtmps://:1936. Point at any PEM cert +
+# key; a Let's Encrypt fullchain that a reverse proxy (Caddy) obtained and
+# renews works as-is (guest OBS validates the chain with no extra setup) -
+# this is the verified working setup. MediaMTX loads the cert at startup -
+# after the certificate is renewed, restart MediaMTX from the dashboard so
+# RTMPS serves the new cert.
+# tls_cert = "C:/certs/fullchain.pem"
+# tls_key  = "C:/certs/privkey.pem"
+# Expose RTMPS on all interfaces so guest OBS can stream in over the internet.
+# Cleartext :1935 is automatically pinned to loopback while this is non-
+# loopback: non-localhost ingests MUST be RTMPS. Forward TCP 1936 on the
+# router + OS firewall for remote publishers.
+# rtmps_bind = "0.0.0.0"
+strict = false
+rtmp_bind = "127.0.0.1"
+hls_bind = "127.0.0.1"
+webrtc_bind = "127.0.0.1"
+# Hostname used in generated publisher URLs (empty = hostname of
+# public-url, then the host embedded in rtmp_url):
+# public_host = "stream.example.com"
+
+# Stream keys for remote publishers (`castbuddy keys ...` generates these).
+[[publish_keys]]
+id = "myscene"
+name = "My scene"
+path = "myscene"
+key = "REPLACE_ME_STREAM_KEY_REPLACE_ME_STREAM_KEY_REPLACE"
+created = 1792533213
+enabled = true
+
+# Share links (live watch pages / file downloads).
+[[shares]]
+id = "SHARE0EXAMPLE000000000000"
+name = "My live share"
+kind = "live"
+target = "myscene"
+expires = 1797291368
+created = 1792539368
