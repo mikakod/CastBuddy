@@ -97,14 +97,14 @@ fn init_logging(enable_access_logging: bool) -> tracing_appender::non_blocking::
 
     let file = tracing_appender::rolling::daily("logs", "castbuddy.log");
     let (file, file_guard) = tracing_appender::non_blocking(file);
-    let filter = match tracing_subscriber::EnvFilter::try_from_default_env() {
-        Ok(f) => f,
-        Err(_) => format!(
-            "castbuddy=info,info{}",
-            access_logging_directives(enable_access_logging)
-        )
-        .into(),
-    };
+    // RUST_LOG (if set) is the base, but enable-logging has the last word:
+    // when off, access records stay suppressed no matter what.
+    let base = std::env::var("RUST_LOG").unwrap_or_else(|_| "castbuddy=info,info".to_string());
+    let filter = tracing_subscriber::EnvFilter::try_new(format!(
+        "{base}{}",
+        access_logging_directives(enable_access_logging)
+    ))
+    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("castbuddy=info,info"));
     // Plain text in the log file: greppable with Select-String / grep.
     tracing_subscriber::fmt()
         .with_ansi(false)

@@ -1,0 +1,28 @@
+# Default CastBuddy config for the container. The entrypoint copies this
+# to /data/castbuddy.toml on first run - edit THAT file afterwards.
+#
+# Binds are loopback INSIDE the container; docker-compose decides what is
+# reachable from the host (share :49989, dashboard on host-loopback only).
+destinations = []
+
+[server]
+bind = "0.0.0.0"        # container-internal; compose publishes 127.0.0.1:8080
+port = 8080
+web_dist = "/app/web/dist"
+media_dir = "/media"
+public_bind = "0.0.0.0" # container-internal; compose publishes 49989
+public_port = 49989
+
+[mediamtx]
+mode = "managed"
+api_url = "http://127.0.0.1:9997"
+rtmp_url = "rtmp://127.0.0.1:1935"
+webrtc_url = "http://127.0.0.1:8889"
+hls_url = "http://127.0.0.1:8888"
+binary = "/usr/local/bin/mediamtx"
+config_path = "/data/mediamtx.generated.yml"
+rtmp_bind = "127.0.0.1"
+hls_bind = "127.0.0.1"
+webrtc_bind = "127.0.0.1"
+# For remote publishers: publish 1936 in compose, mount your certs and
+# set tls_cert/tls_key + rtmps_bind = "0.0.0.0" + strict = true here.

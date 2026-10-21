@@ -45,11 +45,46 @@ cargo run
 # open http://127.0.0.1:8080
 ```
 
-Docker packaging is deferred (the managed mode above is the supported path
-and needs no container); a hardened image may come later.
-
 Add destinations in the dashboard (persisted to `castbuddy.toml`), point OBS at
 `rtmp://localhost:1935/ingest`, done.
+
+Prefer containers? A multi-arch image (linux/amd64 + linux/arm64, Apple
+Silicon included) is ready - see [Running with Docker](#running-with-docker).
+
+## Running with Docker
+
+The same daemon, packaged for **linux/amd64 and linux/arm64** (Docker
+Desktop on macOS and Windows runs the Linux image; Apple Silicon is native
+arm64). MediaMTX, ffmpeg and mpv are bundled - only media and state live
+outside the image:
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build
+# dashboard:  http://127.0.0.1:8080   (published host-loopback only)
+# shares:     http://<host>:49989/watch/<key>/
+# media:      drop files into deploy/data/media/
+# state:      deploy/data/  (castbuddy.toml, logs/, mediamtx.generated.yml)
+```
+
+First run writes `deploy/data/castbuddy.toml` with container defaults
+(loopback-inside-the-container binds, `/media` as the library); edit it and
+restart to change settings - it survives image upgrades. The compose file
+is hardened: `read_only` rootfs, tmpfs `/tmp`, `no-new-privileges`,
+`cap_drop: ALL`, 2g memory limit, non-root user.
+
+Notes:
+
+- Only the share port is published; the dashboard is pinned to
+  host-loopback. MediaMTX's ports stay loopback *inside* the container.
+- Linux hosts: if the container cannot write `deploy/data/`, run
+  `chown -R 1000:1000 deploy/data` (the image runs as uid 1000).
+- The WebRTC dashboard preview needs UDP 8189 end-to-end, which bridged
+  Docker networking cannot provide - the dashboard automatically falls
+  back to the HLS preview (proxied, works everywhere). On Linux,
+  `network_mode: host` gives you full WebRTC.
+- Remote publishers: publish `1936/tcp`, mount your certs, set
+  `tls_cert`/`tls_key` + `rtmps_bind = "0.0.0.0"` in the container config
+  (see the comments in `deploy/castbuddy.docker.toml`).
 
 ## The built-in player
 
@@ -315,12 +350,26 @@ The dashboard builds share URLs from the hostname you browse it from, so with
 a proxy or Serve in place, swap the host in the copied link (or browse the
 dashboard through that host so links are generated with it).
 
+## Compatibility
+
+| Platform | How |
+|----------|-----|
+| Windows  | native (`cargo build`, mpv/ffmpeg on PATH) - primary dev target |
+| Linux    | native (mpv/ffmpeg from the distro), or the Docker image (amd64/arm64) |
+| macOS    | native (`brew install mpv ffmpeg`), or Docker Desktop (arm64 on Apple Silicon) |
+
+The daemon is portable Rust: the only platform splits are `cfg(unix)` /
+`cfg(windows)` for the mpv IPC sockets and process handling, and there are
+no platform-specific dependencies. The container image is built for
+linux/amd64 and linux/arm64.
+
 ## Repository layout
 
 ```
 crates/castbuddy/   Rust daemon (axum API + player + fanout supervisor + WHEP proxy)
 web/                React dashboard (Vite)
-deploy/             docker-compose + mediamtx.yml (hardened reference for a future image)
+deploy/             Docker: hardened compose, container config template, entrypoint
+Dockerfile          multi-arch image build (linux/amd64 + linux/arm64)
 ```
 
 ## Security notes

@@ -5,14 +5,17 @@
 # loopback inside the container. In managed mode MediaMTX runs as a child
 # process of castbuddy, so it needs no published ports of its own.
 #
-# NOTE: the castbuddy container image is on the roadmap (self-hosted is the
-# primary target). Until the Dockerfile exists, run the native binary in
-# managed mode - the exposure posture is identical because the daemon and
-# its generated MediaMTX config bind loopback themselves.
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# First run writes deploy/data/castbuddy.toml (default container config);
+# media goes in deploy/data/media. Linux hosts: if writes fail, chown the
+# data dir to uid 1000 (the container user).
 services:
   castbuddy:
     image: castbuddy:local
-    # build: .   # Dockerfile: daemon + web/dist + ffmpeg/mediamtx binaries
+    build:
+      context: ..
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "49989:49989"           # share server - the ONLY public listener
@@ -20,14 +23,16 @@ services:
     # Intentionally NOT published:
     #   1935/1936 RTMP(S) ingest, 8888 HLS, 8889 WebRTC, 9997 API,
     #   UDP 8189 (WebRTC ICE) - all bound to loopback inside the container.
+    # For remote publishers additionally publish 1936/tcp and set
+    # tls_cert/tls_key + rtmps_bind in the container config.
     volumes:
-      - ./data/castbuddy.toml:/app/castbuddy.toml  # writable: shares/keys persist here
-      - ./data/media:/media                        # server.media_dir
-    environment:
-      - RUST_LOG=info
+      - ./data:/data            # config, logs, generated mediamtx config
+      - ./data/media:/media     # server.media_dir (drop files here)
+    # No RUST_LOG on purpose: the default filter is already info-level,
+    # and enable-logging=false must stay able to silence the access log.
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp                    # mpv IPC sockets
     security_opt:
       - no-new-privileges:true
     cap_drop:

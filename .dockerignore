@@ -1,0 +1,15 @@
+# Build-context hygiene: never bake host state or secrets into the image.
+.git
+gitmodded/
+target/
+web/node_modules/
+web/dist/
+logs/
+bin/
+deploy/data/
+castbuddy.toml
+mediamtx.generated.yml
+*.log
+*.tmp
+.vscode/
+.idea/
