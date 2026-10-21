@@ -51,6 +51,10 @@ Add destinations in the dashboard (persisted to `castbuddy.toml`), point OBS at
 Prefer containers? A multi-arch image (linux/amd64 + linux/arm64, Apple
 Silicon included) is ready - see [Running with Docker](#running-with-docker).
 
+Don't want to build from source at all? The
+[releases page](https://github.com/mikakod/CastBuddy/releases/latest) carries
+ready-made Windows and Linux binaries with a starter config.
+
 ## Running with Docker
 
 The same daemon, packaged for **linux/amd64 and linux/arm64** (Docker
@@ -65,6 +69,19 @@ docker compose -f deploy/docker-compose.yml up -d --build
 # media:      drop files into deploy/data/media/
 # state:      deploy/data/  (castbuddy.toml, logs/, mediamtx.generated.yml)
 ```
+
+Every version is also published as a ready-made multi-arch image, so the
+build step can be skipped:
+
+```bash
+docker pull ghcr.io/mikakod/castbuddy:latest
+docker run -d --name castbuddy -p 127.0.0.1:8080:8080 -p 49989:49989 \
+  -v castbuddy-data:/data -v "$PWD/media":/media:ro \
+  ghcr.io/mikakod/castbuddy:latest
+```
+
+To point the compose file at the published image instead of building, set
+`image: ghcr.io/mikakod/castbuddy:latest` and delete the `build:` block.
 
 First run writes `deploy/data/castbuddy.toml` with container defaults
 (loopback-inside-the-container binds, `/media` as the library); edit it and
@@ -376,6 +393,7 @@ crates/castbuddy/   Rust daemon (axum API + player + fanout supervisor + WHEP pr
 web/                React dashboard (Vite)
 deploy/             Docker: hardened compose, container config template, entrypoint
 Dockerfile          multi-arch image build (linux/amd64 + linux/arm64)
+.github/            GitHub Actions: CI on every push, release pipeline on v* tags
 ```
 
 ## Security notes
