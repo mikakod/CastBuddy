@@ -431,7 +431,3 @@ CastBuddy wouldn't exist without these projects - thank you!
   behind the dashboard and share servers.
 - [React](https://github.com/facebook/react) and
   [Vite](https://github.com/vitejs/vite) - the dashboard's frontend.
-
-## License
-
-MIT
