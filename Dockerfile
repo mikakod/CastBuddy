@@ -62,7 +62,9 @@ RUN useradd --uid 1000 --create-home castbuddy \
 COPY --from=rust /src/target/release/castbuddy /usr/local/bin/castbuddy
 COPY --from=web /src/web/dist /app/web/dist
 COPY deploy/castbuddy.docker.toml /app/castbuddy.docker.toml
-COPY deploy/entrypoint.sh /app/entrypoint.sh
+# --chmod: git tracks this file 0644, and GitHub's Linux builder preserves
+# that through COPY - without the exec bit ENTRYPOINT fails with 126.
+COPY --chmod=755 deploy/entrypoint.sh /app/entrypoint.sh
 
 USER castbuddy
 WORKDIR /data
