@@ -1,6 +1,6 @@
 [package]
 name = "castbuddy"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license.workspace = true
 description = "Self-hosted re-caster: local RTMP ingest, fan-out to any RTMP destination, HLS/WebRTC playback."
