@@ -73,7 +73,10 @@ function Preview({ path, hlsPort }: { path: string; hlsPort: number }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const hlsRef = useRef<Hls | null>(null);
-  const [mode, setMode] = useState<"webrtc" | "hls">("webrtc");
+  // Default to HLS: WebRTC physically cannot carry the AAC audio our RTMP
+  // pipeline produces (MediaMTX only passes Opus/G722/G711 through), so a
+  // WebRTC preview is always video-only and silent. HLS keeps the audio.
+  const [mode, setMode] = useState<"webrtc" | "hls">("hls");
   const [playing, setPlaying] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

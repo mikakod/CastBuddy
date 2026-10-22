@@ -577,9 +577,12 @@ pub fn generated_mediamtx_config(cfg: &Config) -> String {
     };
     y.push_str(&format!(
         "rtmp: yes\nrtmpAddress: {}:1935\nhls: yes\nhlsAddress: {}:8888\n\
+         hlsAllowOrigin: \"*\"\n\
          webrtc: yes\nwebrtcAddress: {}:8889\nwebrtcLocalUDPAddress: {}:8189\n",
         plain_bind, mt.hls_bind, mt.webrtc_bind, mt.webrtc_bind
     ));
+    // hlsAllowOrigin="*": the dashboard (:8080) reads HLS cross-origin from
+    // :8888 - without it the browser preview's hls.js requests are blocked.
     // NOTE: do not lower hlsSegmentCount below 7 - MediaMTX refuses to serve
     // low-latency HLS with fewer ("Low-Latency HLS requires at least 7
     // segments"). Latency comes from segment/part durations (1s/200ms), not

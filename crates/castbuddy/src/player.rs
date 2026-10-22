@@ -502,7 +502,12 @@ async fn spawn_pipeline(
     // tune=zerolatency: no B-frames, no lookahead, no sync-delay - keeps the
     // stream WebRTC-playable (MediaMTX refuses H264 with B-frames) and cuts
     // encode latency. g=60: 2s keyframe interval at 30fps so HLS segments
-    // and preview joins stay fast.
+    // and preview joins stay fast. scenecut=0 via x264-params: scene-cut
+    // IDRs land at random offsets and make HLS segments vary in length
+    // (gohlslib then raises the target duration mid-session - its own
+    // warning says strict iOS/AVPro-class clients error on that), so the
+    // GOP stays mechanically periodic. scenecut is an x264 param, not a
+    // libavcodec option - bare `scenecut=0` in ovcopts is silently ignored.
     mp.args([
         "--no-config",
         "--no-terminal",
@@ -511,7 +516,7 @@ async fn spawn_pipeline(
         "--o=-",
         "--of=flv",
         "--ovc=libx264",
-        "--ovcopts=preset=veryfast,tune=zerolatency,g=60",
+        "--ovcopts=preset=veryfast,tune=zerolatency,g=60,x264-params=scenecut=0",
         "--oac=aac",
         "--vf-append=format=yuv420p",
     ]);
@@ -612,6 +617,12 @@ async fn tag_log(tag: &'static str, stream: impl tokio::io::AsyncRead + Unpin) {
 // timestamp, and emit at native speed. The clock rebases when a timestamp is
 // far behind (pause/stall/seek-back) or far ahead (seek-forward), so content
 // always flows at 1x and never fast-forwards after a pause.
+//
+// Output is GATED until the first audio/video tag exists: publishing the bare
+// FLV header during mpv's startup warmup makes MediaMTX declare the path
+// "ready" while no media flows, so players connecting in that window create
+// gap-filled HLS sessions (EXT-X-GAP, 1s->2s segment flips, orphaned segment
+// 404s) that leave VLC and other strict clients silent or broken.
 
 fn pace(epoch: &mut Option<i64>, ts: i64) -> Duration {
     let now = now_ms();
@@ -643,6 +654,9 @@ async fn pacer(mut stdout: ChildStdout, mut stdin: ChildStdin, hb: Arc<AtomicI64
     let mut header_size: usize = 9;
     let mut epoch: Option<i64> = None;
     let mut total: usize = 0;
+    // Bytes held behind the media gate (FLV header + pre-roll tags).
+    let mut pending: Vec<u8> = Vec::new();
+    let mut released = false;
 
     'read: loop {
         let n = match stdout.read(&mut tmp).await {
@@ -672,12 +686,10 @@ async fn pacer(mut stdout: ChildStdout, mut stdin: ChildStdin, hb: Arc<AtomicI64
                 if buf.len() < header_size {
                     break 'drain;
                 }
-                // Forward the FLV header itself - without the "FLV" magic the
-                // downstream probe rejects the stream as invalid data.
-                if stdin.write_all(&buf[..header_size]).await.is_err() {
-                    break 'read;
-                }
-                hb.store(now_ms(), Ordering::SeqCst);
+                // Queue the FLV header behind the media gate - without it the
+                // downstream probe rejects the stream, and sending it alone
+                // would make MediaMTX announce an empty path (see pacer note).
+                pending.extend_from_slice(&buf[..header_size]);
                 buf.drain(..header_size);
                 header_stage = 2;
                 continue 'drain;
@@ -700,6 +712,29 @@ async fn pacer(mut stdout: ChildStdout, mut stdin: ChildStdin, hb: Arc<AtomicI64
                 break 'drain;
             }
 
+            if !released {
+                let tag_type = buf[tag];
+                if tag_type != 8 && tag_type != 9 {
+                    // Pre-roll (metadata etc.): queue it behind the gate so
+                    // the stream still opens with a proper header.
+                    pending.extend_from_slice(&buf[..total]);
+                    buf.drain(..total);
+                    continue 'drain;
+                }
+                // First audio/video tag: open the gate and flush the head.
+                // ffmpeg only connects to MediaMTX after this point, so eager
+                // players can no longer latch onto a half-empty timeline.
+                let queued = pending.len();
+                if stdin.write_all(&pending).await.is_err() {
+                    break 'read;
+                }
+                pending.clear();
+                released = true;
+                tracing::info!(
+                    target: "player",
+                    "pacer: media started, released {queued} gated bytes"
+                );
+            }
             let wait = pace(&mut epoch, ts);
             if !wait.is_zero() {
                 tokio::time::sleep(wait).await;
