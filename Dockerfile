@@ -28,20 +28,20 @@ RUN cargo build --release -p castbuddy
 ### runtime ---------------------------------------------------------------
 FROM debian:bookworm-slim
 ARG TARGETARCH
-ARG MEDIAMTX_VERSION=v1.11.3
+ARG MEDIAMTX_VERSION=v1.21.2
 
 # MediaMTX (managed child), ffmpeg (fan-out/player relay), mpv (headless
 # encode player) - matching what the native install expects on PATH.
 # The MediaMTX release asset is checksum-pinned (SHA-256 from the release's
-# published .sha256sum files), so a swapped archive fails the build. Its
+# published checksums.sha256 file), so a swapped archive fails the build. Its
 # MIT license text ships with the image at /usr/share/doc/mediamtx/LICENSE
 # (ffmpeg/mpv carry theirs via the Debian packages).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl ffmpeg mpv \
     && rm -rf /var/lib/apt/lists/* \
     && case "$TARGETARCH" in \
-           amd64) MTX=amd64; SHA=b2e65c0be00434b13e01feb64e85af4bc65fa3c62d1b9aa2d4139bd28d795cba ;; \
-           arm64) MTX=arm64v8; SHA=6ae3e3d78a770ed28ae26f8e8b474387e9d44ee88d419a245e48530062bdb629 ;; \
+           amd64) MTX=amd64; SHA=121be6e00397e473a95d83c75f4fcd3819a6af3b0e1a50889cba43ab4fab6a27 ;; \
+           arm64) MTX=arm64; SHA=180a235374a548d9133cdd5e20f5dbd8b01317be1c86e0d7e66df585dc42ed6f ;; \
            *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
        esac \
     && curl -fsSL -o /tmp/mediamtx.tar.gz \
